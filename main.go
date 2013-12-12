@@ -12,11 +12,25 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type customizationSubmission struct {
 	Customization models.Customization
 	ImpressUserId int
+}
+
+type usersResponse struct {
+	Users []userResponse `json:"users"`
+}
+
+type userResponse struct {
+	Id    string           `json:"id"`
+	Links petLinksResponse `json:"links"`
+}
+
+type petLinksResponse struct {
+	Pets []string `json:"pets"`
 }
 
 func serveJSONBytes(w http.ResponseWriter, r *http.Request, b []byte) {
@@ -43,14 +57,33 @@ func serveJSONError(w http.ResponseWriter, r *http.Request, err error) {
 	serveJSONBytes(w, r, b)
 }
 
-// 0:/1:api/2:1/3:pets/4:thyassa/5:customization
+func writeExpiresIn(w http.ResponseWriter, timeUntilExpiry time.Duration,
+	now time.Time) {
+	writeExpiryHeaders(w, now.Add(timeUntilExpiry), timeUntilExpiry)
+}
+
+func writeExpiryHeaders(w http.ResponseWriter, expiry time.Time,
+	timeUntilExpiry time.Duration) {
+	secondsUntilExpiry := int(timeUntilExpiry.Seconds())
+	if secondsUntilExpiry < 0 {
+		secondsUntilExpiry = 0
+	}
+
+	w.Header().Add("cache-control",
+		fmt.Sprintf("public, max-age=%d", secondsUntilExpiry))
+	w.Header().Add("expires", expiry.Format(time.RFC1123))
+}
+
 func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string) {
 	// Get customization
-	c, err := models.serveCustomization(petName)
+	c, err := models.GetCustomization(petName)
 	if err != nil {
 		serveJSONError(w, r, err)
 		return
 	}
+
+	// Serve cache headers
+	writeExpiresIn(w, time.Duration(5)*time.Minute, time.Now())
 
 	// Serve customization
 	redirectFormat := r.FormValue("redirect")
@@ -79,6 +112,18 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	cc <- customizationSubmission{c, int(impressUserId)}
 }
 
+func serveUser(w http.ResponseWriter, r *http.Request, name string) {
+	u, err := models.GetUser(name)
+	if err != nil {
+		serveJSONError(w, r, err)
+		return
+	}
+	writeExpiresIn(w, time.Duration(1)*time.Hour, time.Now())
+	serveJSON(w, r, usersResponse{
+		[]userResponse{userResponse{u.Name, petLinksResponse{u.PetNames}}},
+	})
+}
+
 func submit(impress services.ImpressClient, csc chan customizationSubmission) {
 	for {
 		cs := <-csc
@@ -101,7 +146,7 @@ func main() {
 	impressHost := flag.String("impress", "impress.openneo.net", "Dress to Impress host")
 	flag.Parse()
 
-	impress := services.NewImpressClient("impress.dev.openneo.net")
+	impress := services.NewImpressClient(*impressHost)
 	csc := make(chan customizationSubmission, 32)
 	go submit(impress, csc)
 
@@ -109,12 +154,22 @@ func main() {
 		serveCustomization(w, r, csc, r.FormValue("name"))
 	})
 	http.HandleFunc("/api/1/pets/", func(w http.ResponseWriter, r *http.Request) {
+		// 0:/1:api/2:1/3:pets/4:thyassa/5:customization
 		components := strings.Split(r.URL.Path, "/")
-		if len(components) < 6 || components[5] != "customization" {
+		if len(components) != 6 || components[5] != "customization" {
 			http.NotFound(w, r)
 			return
 		}
 		serveCustomization(w, r, csc, components[4])
+	})
+	http.HandleFunc("/api/1/users/", func(w http.ResponseWriter, r *http.Request) {
+		// 0:/1:api/2:1/3:users/4:borovan
+		components := strings.Split(r.URL.Path, "/")
+		if len(components) != 5 {
+			http.NotFound(w, r)
+			return
+		}
+		serveUser(w, r, components[4])
 	})
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
 }
