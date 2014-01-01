@@ -57,7 +57,7 @@ func servePublicJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
 }
 
 func servePublicJSONError(w http.ResponseWriter, r *http.Request, err error, status int) {
-	b := []byte(fmt.Sprintf("{error: %s}", strconv.Quote(err.Error())))
+	b := []byte(fmt.Sprintf("{\"error\": %s}", strconv.Quote(err.Error())))
 	servePublicJSONBytes(w, r, b, status)
 }
 
