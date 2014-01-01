@@ -12,6 +12,14 @@ type User struct {
 	PetNames []string
 }
 
+type UserNotFoundError struct {
+	Name string
+}
+
+func (e UserNotFoundError) Error() string {
+	return fmt.Sprintf("user %s not found", e.Name)
+}
+
 func GetUser(name string) (User, error) {
 	user := User{}
 
@@ -22,7 +30,11 @@ func GetUser(name string) (User, error) {
 		return user, err
 	}
 
-	petsWrapper := doc.Find("#userneopets").Last()
+	petsWrappers := doc.Find("#userneopets")
+	if petsWrappers.Length() == 0 {
+		return user, UserNotFoundError{name}
+	}
+	petsWrapper := petsWrappers.Last()
 	petNodes := petsWrapper.Find("a[href^='/petlookup.phtml?pet=']")
 	petNodes.Each(func(_ int, s *goquery.Selection) {
 		href, ok := s.Attr("href")

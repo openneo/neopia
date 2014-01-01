@@ -49,14 +49,14 @@ func servePublicJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
 
 	b, err := json.Marshal(v)
 	if err != nil {
-		serveJSONError(w, r, err)
+		serveJSONError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 	serveJSONBytes(w, r, b)
 }
 
-func serveJSONError(w http.ResponseWriter, r *http.Request, err error) {
-	w.WriteHeader(http.StatusInternalServerError)
+func serveJSONError(w http.ResponseWriter, r *http.Request, err error, header int) {
+	w.WriteHeader(header)
 	b := []byte(fmt.Sprintf("{error: %s}", strconv.Quote(err.Error())))
 	serveJSONBytes(w, r, b)
 }
@@ -82,7 +82,7 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	// Get customization
 	c, err := models.GetCustomization(petName)
 	if err != nil {
-		serveJSONError(w, r, err)
+		serveJSONError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -119,7 +119,12 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 func serveUser(w http.ResponseWriter, r *http.Request, name string) {
 	u, err := models.GetUser(name)
 	if err != nil {
-		serveJSONError(w, r, err)
+		_, isNotFound := err.(models.UserNotFoundError)
+		if isNotFound {
+			serveJSONError(w, r, err, http.StatusNotFound)
+		} else {
+			serveJSONError(w, r, err, http.StatusInternalServerError)
+		}
 		return
 	}
 	// Fun fact, since I was worried about this: if you send cache headers
