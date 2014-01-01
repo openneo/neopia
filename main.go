@@ -33,7 +33,12 @@ type petLinksResponse struct {
 	Pets []string `json:"pets"`
 }
 
-func serveJSONBytes(w http.ResponseWriter, r *http.Request, b []byte) {
+func servePublicJSONBytes(w http.ResponseWriter, r *http.Request, b []byte, status int) {
+	// Allow any website to send requests for this resource - it *is* public
+	// JSON, after all.
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(status)
+
 	callback := r.FormValue("callback")
 	if callback == "" {
 		fmt.Fprintf(w, "%s", b)
@@ -43,22 +48,17 @@ func serveJSONBytes(w http.ResponseWriter, r *http.Request, b []byte) {
 }
 
 func servePublicJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
-	// Allow any website to send requests for this resource - it *is* public
-	// JSON, after all.
-	w.Header().Add("Access-Control-Allow-Origin", "*")
-
 	b, err := json.Marshal(v)
 	if err != nil {
-		serveJSONError(w, r, err, http.StatusInternalServerError)
+		servePublicJSONError(w, r, err, http.StatusInternalServerError)
 		return
 	}
-	serveJSONBytes(w, r, b)
+	servePublicJSONBytes(w, r, b, http.StatusOK)
 }
 
-func serveJSONError(w http.ResponseWriter, r *http.Request, err error, header int) {
-	w.WriteHeader(header)
+func servePublicJSONError(w http.ResponseWriter, r *http.Request, err error, status int) {
 	b := []byte(fmt.Sprintf("{error: %s}", strconv.Quote(err.Error())))
-	serveJSONBytes(w, r, b)
+	servePublicJSONBytes(w, r, b, status)
 }
 
 func writeExpiresIn(w http.ResponseWriter, timeUntilExpiry time.Duration,
@@ -82,7 +82,7 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	// Get customization
 	c, err := models.GetCustomization(petName)
 	if err != nil {
-		serveJSONError(w, r, err, http.StatusInternalServerError)
+		servePublicJSONError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -121,9 +121,9 @@ func serveUser(w http.ResponseWriter, r *http.Request, name string) {
 	if err != nil {
 		_, isNotFound := err.(models.UserNotFoundError)
 		if isNotFound {
-			serveJSONError(w, r, err, http.StatusNotFound)
+			servePublicJSONError(w, r, err, http.StatusNotFound)
 		} else {
-			serveJSONError(w, r, err, http.StatusInternalServerError)
+			servePublicJSONError(w, r, err, http.StatusInternalServerError)
 		}
 		return
 	}
