@@ -42,7 +42,11 @@ func serveJSONBytes(w http.ResponseWriter, r *http.Request, b []byte) {
 	}
 }
 
-func serveJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
+func servePublicJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
+	// Allow any website to send requests for this resource - it *is* public
+	// JSON, after all.
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+
 	b, err := json.Marshal(v)
 	if err != nil {
 		serveJSONError(w, r, err)
@@ -88,7 +92,7 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	// Serve customization
 	redirectFormat := r.FormValue("redirect")
 	if redirectFormat == "" { // serve as JSON
-		serveJSON(w, r, c)
+		servePublicJSON(w, r, c)
 	} else { // serve as redirect with query string
 		v := url.Values{}
 		v.Set("name", c.CustomPet.Name)
@@ -118,8 +122,16 @@ func serveUser(w http.ResponseWriter, r *http.Request, name string) {
 		serveJSONError(w, r, err)
 		return
 	}
+	// Fun fact, since I was worried about this: if you send cache headers
+	// alongside a POST request, future POST requests still will not be served
+	// from the cache. Instead, the new response will be cached and served in
+	// response to future GET requests, which is exactly what we want here: the
+	// ability to semantically assert that the pet has changed and needs to be
+	// reexamined via POST, while still serving cached results from GET in less
+	// urgent scenarios.
+	// http://lists.w3.org/Archives/Public/ietf-http-wg/2008OctDec/0200.html
 	writeExpiresIn(w, time.Duration(1)*time.Hour, time.Now())
-	serveJSON(w, r, usersResponse{
+	servePublicJSON(w, r, usersResponse{
 		[]userResponse{userResponse{u.Name, petLinksResponse{u.PetNames}}},
 	})
 }
