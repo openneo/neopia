@@ -88,6 +88,23 @@ func redirectToImpress(w http.ResponseWriter, r *http.Request, petName string, i
 	http.Redirect(w, r, redirectUrl, http.StatusTemporaryRedirect)
 }
 
+func serveCustomizationErrorMessage(w http.ResponseWriter, r *http.Request, msg string, status int, petName string) {
+	if r.FormValue("redirect") == "" {
+		servePublicJSONErrorMessage(w, r, msg, status)
+	} else {
+		referer, err := url.ParseRequestURI(r.Referer())
+		if err != nil {
+			servePublicJSONErrorMessage(w, r, msg, status)
+			return
+		}
+		q := referer.Query()
+		q.Set("name", petName)
+		q.Set("neopia[error]", msg)
+		referer.RawQuery = q.Encode()
+		http.Redirect(w, r, referer.String(), http.StatusTemporaryRedirect)
+	}
+}
+
 func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, impressHost string) {
 	if petName[0] >= '0' && petName[0] <= '9' {
 		// The JSON endpoint thinks that names that start with digits are
@@ -100,9 +117,9 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 		} else if redirectFormat == "http://"+impressHost+"/#{q}" {
 			redirectToImpress(w, r, petName, impressHost, "")
 		} else {
-			servePublicJSONErrorMessage(w, r,
+			serveCustomizationErrorMessage(w, r,
 				"pet names with leading digits are unsupported",
-				http.StatusBadRequest)
+				http.StatusBadRequest, petName)
 		}
 		return
 	}
@@ -110,7 +127,8 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	// Get customization
 	c, found, err := models.GetCustomization(petName)
 	if err != nil {
-		servePublicJSONError(w, r, err, http.StatusInternalServerError)
+		serveCustomizationErrorMessage(w, r, err.Error(),
+			http.StatusInternalServerError, petName)
 		return
 	}
 
@@ -118,7 +136,8 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	writeExpiresIn(w, time.Duration(5)*time.Minute, time.Now())
 
 	if !found {
-		servePublicJSONErrorMessage(w, r, "pet not found", http.StatusNotFound)
+		serveCustomizationErrorMessage(w, r, "pet not found",
+			http.StatusNotFound, petName)
 		return
 	}
 
