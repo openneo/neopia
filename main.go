@@ -108,7 +108,7 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	}
 
 	// Get customization
-	c, err := models.GetCustomization(petName)
+	c, found, err := models.GetCustomization(petName)
 	if err != nil {
 		servePublicJSONError(w, r, err, http.StatusInternalServerError)
 		return
@@ -116,6 +116,11 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 
 	// Serve cache headers
 	writeExpiresIn(w, time.Duration(5)*time.Minute, time.Now())
+
+	if !found {
+		servePublicJSONErrorMessage(w, r, "pet not found", http.StatusNotFound)
+		return
+	}
 
 	// Serve customization
 	redirectFormat := r.FormValue("redirect")

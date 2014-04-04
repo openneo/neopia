@@ -7,18 +7,22 @@ import (
 	"net/url"
 )
 
-func GetCustomization(petName string) (Customization, error) {
+func GetCustomization(petName string) (Customization, bool, error) {
 	resp, err := http.Get("http://www.neopets.com/amfphp/json.php/" +
 		"CustomPetService.getViewerData/" + url.QueryEscape(petName))
 	if err != nil {
-		return Customization{}, err
+		return Customization{}, false, err
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return Customization{}, err
+		return Customization{}, false, err
 	}
 	resp.Body.Close()
+
+	if len(body) == 0 {
+		return Customization{}, false, nil
+	}
 
 	// The AMFPHP JSON interface is a bit silly: because PHP maps are
 	// implemented as arrays, empty maps look like empty lists when JSONified.
@@ -28,7 +32,7 @@ func GetCustomization(petName string) (Customization, error) {
 	var cr customizationResponse
 	err = json.Unmarshal(body, &cr)
 	if err != nil {
-		return Customization{}, err
+		return Customization{}, false, err
 	}
 
 	cp := CustomPet{
@@ -61,7 +65,7 @@ func GetCustomization(petName string) (Customization, error) {
 		c.ObjectAssetRegistry = make(map[string]ObjectAsset)
 	}
 
-	return c, nil
+	return c, true, nil
 }
 
 type Customization struct {
