@@ -56,9 +56,13 @@ func servePublicJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
 	servePublicJSONBytes(w, r, b, http.StatusOK)
 }
 
-func servePublicJSONError(w http.ResponseWriter, r *http.Request, err error, status int) {
-	b := []byte(fmt.Sprintf("{\"error\": %s}", strconv.Quote(err.Error())))
+func servePublicJSONErrorMessage(w http.ResponseWriter, r *http.Request, msg string, status int) {
+	b := []byte(fmt.Sprintf("{\"error\": %s}", strconv.Quote(msg)))
 	servePublicJSONBytes(w, r, b, status)
+}
+
+func servePublicJSONError(w http.ResponseWriter, r *http.Request, err error, status int) {
+	servePublicJSONErrorMessage(w, r, err.Error(), status)
 }
 
 func writeExpiresIn(w http.ResponseWriter, timeUntilExpiry time.Duration,
@@ -78,7 +82,31 @@ func writeExpiryHeaders(w http.ResponseWriter, expiry time.Time,
 	w.Header().Add("expires", expiry.Format(time.RFC1123))
 }
 
-func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string) {
+func redirectToImpress(w http.ResponseWriter, r *http.Request, petName string, impressHost string, destination string) {
+	redirectUrl := "http://" + impressHost + "/pets/load?name=" +
+		url.QueryEscape(petName) + "&destination=" + destination
+	http.Redirect(w, r, redirectUrl, http.StatusTemporaryRedirect)
+}
+
+func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, impressHost string) {
+	if petName[0] >= '0' && petName[0] <= '9' {
+		// The JSON endpoint thinks that names that start with digits are
+		// integers and times out on them. They get special treatment.
+		// If it's a request to DTI, pass them off to the old embedded AMF pet
+		// loader. Otherwise, yield a JSON error.
+		redirectFormat := r.FormValue("redirect")
+		if redirectFormat == "http://"+impressHost+"/wardrobe#{q}" {
+			redirectToImpress(w, r, petName, impressHost, "wardrobe")
+		} else if redirectFormat == "http://"+impressHost+"/#{q}" {
+			redirectToImpress(w, r, petName, impressHost, "")
+		} else {
+			servePublicJSONErrorMessage(w, r,
+				"pet names with leading digits are unsupported",
+				http.StatusBadRequest)
+		}
+		return
+	}
+
 	// Get customization
 	c, err := models.GetCustomization(petName)
 	if err != nil {
@@ -168,7 +196,7 @@ func main() {
 	go submit(impress, csc)
 
 	http.HandleFunc("/api/1/pet/customization", func(w http.ResponseWriter, r *http.Request) {
-		serveCustomization(w, r, csc, r.FormValue("name"))
+		serveCustomization(w, r, csc, r.FormValue("name"), *impressHost)
 	})
 	http.HandleFunc("/api/1/pets/", func(w http.ResponseWriter, r *http.Request) {
 		// 0:/1:api/2:1/3:pets/4:thyassa/5:customization
@@ -177,7 +205,7 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		serveCustomization(w, r, csc, components[4])
+		serveCustomization(w, r, csc, components[4], *impressHost)
 	})
 	http.HandleFunc("/api/1/users/", func(w http.ResponseWriter, r *http.Request) {
 		// 0:/1:api/2:1/3:users/4:borovan
