@@ -106,6 +106,12 @@ func serveCustomizationErrorMessage(w http.ResponseWriter, r *http.Request, msg 
 }
 
 func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, impressHost string) {
+	if len(petName) == 0 {
+		serveCustomizationErrorMessage(w, r, "name blank",
+			http.StatusBadRequest, petName)
+		return
+	}
+
 	if petName[0] >= '0' && petName[0] <= '9' {
 		// The JSON endpoint thinks that names that start with digits are
 		// integers and times out on them. They get special treatment.
