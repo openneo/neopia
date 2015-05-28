@@ -2,37 +2,31 @@ package models
 
 import (
 	"encoding/json"
-	"io/ioutil"
-	"net/http"
-	"net/url"
+	"github.com/openneo/neopia/amfphp"
 )
 
-func GetCustomization(petName string) (Customization, bool, error) {
-	resp, err := http.Get("http://www.neopets.com/amfphp/json.php/" +
-		"CustomPetService.getViewerData/" + url.QueryEscape(petName))
-	if err != nil {
-		return Customization{}, false, err
-	}
+type CustomizationService struct {
+	method amfphp.RemoteMethod
+}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return Customization{}, false, err
-	}
-	resp.Body.Close()
+func NewCustomizationService(gateway amfphp.RemoteGateway) CustomizationService {
+	return CustomizationService{method: gateway.Service("CustomPetService").Method("getViewerData")}
+}
 
-	if len(body) == 0 {
-		return Customization{}, false, nil
-	}
+func customizationResponseIsPresent(body []byte) bool {
+	return len(body) > 0
+}
 
+func (s CustomizationService) GetCustomization(petName string) (Customization, bool, error) {
 	// The AMFPHP JSON interface is a bit silly: because PHP maps are
 	// implemented as arrays, empty maps look like empty lists when JSONified.
 	// So, we need to explicitly try to parse the possibly-empty fields as
 	// maps, and explicitly fall back to an empty map if it fails.
 
 	var cr customizationResponse
-	err = json.Unmarshal(body, &cr)
-	if err != nil {
-		return Customization{}, false, err
+	present, err := s.method.Call(customizationResponseIsPresent, &cr, petName)
+	if !present || err != nil {
+		return Customization{}, present, err
 	}
 
 	cp := CustomPet{

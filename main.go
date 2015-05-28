@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/openneo/neopia/amfphp"
 	"github.com/openneo/neopia/models"
 	"github.com/openneo/neopia/services"
 	"io/ioutil"
@@ -105,7 +106,7 @@ func serveCustomizationErrorMessage(w http.ResponseWriter, r *http.Request, msg 
 	}
 }
 
-func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, impressHost string) {
+func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, customizationService models.CustomizationService, impressHost string) {
 	if len(petName) == 0 {
 		serveCustomizationErrorMessage(w, r, "name blank",
 			http.StatusBadRequest, petName)
@@ -131,7 +132,7 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	}
 
 	// Get customization
-	c, found, err := models.GetCustomization(petName)
+	c, found, err := customizationService.GetCustomization(petName)
 	if err != nil {
 		serveCustomizationErrorMessage(w, r, err.Error(),
 			http.StatusInternalServerError, petName)
@@ -218,15 +219,20 @@ func submit(impress services.ImpressClient, csc chan customizationSubmission) {
 
 func main() {
 	port := flag.Int("port", 8888, "port on which to run web server")
+	neopetsHost := flag.String("neopetsGateway", "http://www.neopets.com/amfphp/json.php", "Neopets JSON gateway URL")
 	impressHost := flag.String("impress", "impress.openneo.net", "Dress to Impress host")
 	flag.Parse()
+
+	neopetsGateway := amfphp.NewRemoteGateway(*neopetsHost)
+	customizationService := models.NewCustomizationService(neopetsGateway)
+	//userService = models.NewUserService(neopetsGateway)
 
 	impress := services.NewImpressClient(*impressHost)
 	csc := make(chan customizationSubmission, 32)
 	go submit(impress, csc)
 
 	http.HandleFunc("/api/1/pet/customization", func(w http.ResponseWriter, r *http.Request) {
-		serveCustomization(w, r, csc, r.FormValue("name"), *impressHost)
+		serveCustomization(w, r, csc, r.FormValue("name"), customizationService, *impressHost)
 	})
 	http.HandleFunc("/api/1/pets/", func(w http.ResponseWriter, r *http.Request) {
 		// 0:/1:api/2:1/3:pets/4:thyassa/5:customization
@@ -235,7 +241,7 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		serveCustomization(w, r, csc, components[4], *impressHost)
+		serveCustomization(w, r, csc, components[4], customizationService, *impressHost)
 	})
 	http.HandleFunc("/api/1/users/", func(w http.ResponseWriter, r *http.Request) {
 		// 0:/1:api/2:1/3:users/4:borovan
