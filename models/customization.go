@@ -6,11 +6,11 @@ import (
 )
 
 type CustomizationService struct {
-	method amfphp.RemoteMethod
+	getViewerData amfphp.RemoteMethod
 }
 
 func NewCustomizationService(gateway amfphp.RemoteGateway) CustomizationService {
-	return CustomizationService{method: gateway.Service("CustomPetService").Method("getViewerData")}
+	return CustomizationService{getViewerData: gateway.Service("CustomPetService").Method("getViewerData", customizationResponseIsPresent)}
 }
 
 func customizationResponseIsPresent(body []byte) bool {
@@ -24,8 +24,8 @@ func (s CustomizationService) GetCustomization(petName string) (Customization, b
 	// maps, and explicitly fall back to an empty map if it fails.
 
 	var cr customizationResponse
-	present, err := s.method.Call(customizationResponseIsPresent, &cr, petName)
-	if !present || err != nil {
+	present, err := s.getViewerData.Call(&cr, petName)
+	if !(present && err == nil) {
 		return Customization{}, present, err
 	}
 

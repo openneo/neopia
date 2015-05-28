@@ -140,6 +140,14 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	}
 
 	// Serve cache headers
+	// Fun fact, since I was worried about this: if you send cache headers
+	// alongside a POST request, future POST requests still will not be served
+	// from the cache. Instead, the new response will be cached and served in
+	// response to future GET requests, which is exactly what we want here: the
+	// ability to semantically assert that the pet has changed and needs to be
+	// reexamined via POST, while still serving cached results from GET in less
+	// urgent scenarios.
+	// http://lists.w3.org/Archives/Public/ietf-http-wg/2008OctDec/0200.html
 	writeExpiresIn(w, time.Duration(5)*time.Minute, time.Now())
 
 	if !found {
@@ -175,29 +183,18 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 	cc <- customizationSubmission{c, int(impressUserId)}
 }
 
-func serveUser(w http.ResponseWriter, r *http.Request, name string) {
-	u, err := models.GetUser(name)
-	if err != nil {
-		_, isNotFound := err.(models.UserNotFoundError)
-		if isNotFound {
-			servePublicJSONError(w, r, err, http.StatusNotFound)
-		} else {
-			servePublicJSONError(w, r, err, http.StatusInternalServerError)
-		}
-		return
+func serveUser(w http.ResponseWriter, r *http.Request, userService models.UserService, name string) {
+	u, found, err := userService.GetUser(name)
+	if !found {
+		servePublicJSONErrorMessage(w, r, fmt.Sprintf("user \"%s\" not found", name), http.StatusNotFound)
+	} else if err != nil {
+		servePublicJSONError(w, r, err, http.StatusInternalServerError)
+	} else {
+		writeExpiresIn(w, time.Duration(1)*time.Hour, time.Now())
+		servePublicJSON(w, r, usersResponse{
+			[]userResponse{userResponse{u.Name, petLinksResponse{u.PetNames}}},
+		})
 	}
-	// Fun fact, since I was worried about this: if you send cache headers
-	// alongside a POST request, future POST requests still will not be served
-	// from the cache. Instead, the new response will be cached and served in
-	// response to future GET requests, which is exactly what we want here: the
-	// ability to semantically assert that the pet has changed and needs to be
-	// reexamined via POST, while still serving cached results from GET in less
-	// urgent scenarios.
-	// http://lists.w3.org/Archives/Public/ietf-http-wg/2008OctDec/0200.html
-	writeExpiresIn(w, time.Duration(1)*time.Hour, time.Now())
-	servePublicJSON(w, r, usersResponse{
-		[]userResponse{userResponse{u.Name, petLinksResponse{u.PetNames}}},
-	})
 }
 
 func submit(impress services.ImpressClient, csc chan customizationSubmission) {
@@ -225,7 +222,7 @@ func main() {
 
 	neopetsGateway := amfphp.NewRemoteGateway(*neopetsHost)
 	customizationService := models.NewCustomizationService(neopetsGateway)
-	//userService = models.NewUserService(neopetsGateway)
+	userService := models.NewUserService(neopetsGateway)
 
 	impress := services.NewImpressClient(*impressHost)
 	csc := make(chan customizationSubmission, 32)
@@ -250,7 +247,7 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		serveUser(w, r, components[4])
+		serveUser(w, r, userService, components[4])
 	})
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
 }
