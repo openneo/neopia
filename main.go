@@ -34,6 +34,10 @@ type petLinksResponse struct {
 	Pets []string `json:"pets"`
 }
 
+type statusResponse struct {
+	Status bool `json:"status"`
+}
+
 func servePublicJSONBytes(w http.ResponseWriter, r *http.Request, b []byte, status int) {
 	// Allow any website to send requests for this resource - it *is* public
 	// JSON, after all.
@@ -197,6 +201,17 @@ func serveUser(w http.ResponseWriter, r *http.Request, userService models.UserSe
 	}
 }
 
+func serveStatus(w http.ResponseWriter, r *http.Request, status bool) {
+	servePublicJSON(w, r, statusResponse{status})
+}
+
+func ping(client http.Client, url string) bool {
+	_, err := client.Get(url)
+	status := (err == nil)
+	log.Printf("neopets status: %t", status)
+	return status
+}
+
 func submit(impress services.ImpressClient, csc chan customizationSubmission) {
 	for {
 		cs := <-csc
@@ -218,6 +233,9 @@ func main() {
 	port := flag.Int("port", 8888, "port on which to run web server")
 	neopetsHost := flag.String("neopetsGateway", "http://www.neopets.com/amfphp/json.php", "Neopets JSON gateway URL")
 	impressHost := flag.String("impress", "impress.openneo.net", "Dress to Impress host")
+	pingIntervalInSeconds := flag.Int("pingInterval", 60, "Ping Neopets for status every X seconds")
+	pingTimeoutInSeconds := flag.Int("pingTimeout", 10, "Give up on the Neopets ping after X seconds")
+	pingUrl := flag.String("pingUrl", "http://www.neopets.com/", "Neopets URL to ping")
 	flag.Parse()
 
 	neopetsGateway := amfphp.NewRemoteGateway(*neopetsHost)
@@ -228,6 +246,21 @@ func main() {
 	csc := make(chan customizationSubmission, 32)
 	go submit(impress, csc)
 
+	ticker := time.NewTicker(time.Duration(*pingIntervalInSeconds) * time.Second)
+
+	pingTimeout := time.Duration(time.Duration(*pingTimeoutInSeconds) * time.Second)
+	pingClient := http.Client{Timeout: pingTimeout}
+	status := true
+	go func() {
+		for {
+			_ = <- ticker.C
+			status = ping(pingClient, *pingUrl)
+		}
+	}()
+
+	http.HandleFunc("/api/1/status", func(w http.ResponseWriter, r *http.Request) {
+		serveStatus(w, r, status)
+	})
 	http.HandleFunc("/api/1/pet/customization", func(w http.ResponseWriter, r *http.Request) {
 		serveCustomization(w, r, csc, r.FormValue("name"), customizationService, *impressHost)
 	})
