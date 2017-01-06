@@ -52,12 +52,12 @@ func (m RemoteMethod) Call(dest interface{}, args ...string) (present bool, err 
 	if err != nil {
 		return false, err
 	}
+	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return false, err
 	}
-	resp.Body.Close()
 
 	if !m.responseIsPresent(body) {
 		return false, nil

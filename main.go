@@ -220,11 +220,11 @@ func submit(impress services.ImpressClient, csc chan customizationSubmission) {
 			log.Printf("impress failed: %s", err)
 			return
 		}
+		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.Printf("can't read impress: %s", err)
 		}
-		resp.Body.Close()
 		log.Printf("impress responded: %s", body)
 	}
 }
