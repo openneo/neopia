@@ -110,8 +110,7 @@ func serveCustomizationErrorMessage(w http.ResponseWriter, r *http.Request, msg 
 	}
 }
 
-func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, customizationService models.CustomizationService, 
-			string) {
+func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, customizationService models.CustomizationService, impressHost string) {
 	if len(petName) == 0 {
 		serveCustomizationErrorMessage(w, r, "name blank",
 			http.StatusBadRequest, petName)
