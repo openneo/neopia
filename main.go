@@ -88,7 +88,7 @@ func writeExpiryHeaders(w http.ResponseWriter, expiry time.Time,
 }
 
 func redirectToImpress(w http.ResponseWriter, r *http.Request, petName string, impressHost string, destination string) {
-	redirectUrl := "http://" + impressHost + "/pets/load?name=" +
+	redirectUrl := impressHost + "/pets/load?name=" +
 		url.QueryEscape(petName) + "&destination=" + destination
 	http.Redirect(w, r, redirectUrl, http.StatusTemporaryRedirect)
 }
@@ -110,7 +110,8 @@ func serveCustomizationErrorMessage(w http.ResponseWriter, r *http.Request, msg 
 	}
 }
 
-func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, customizationService models.CustomizationService, impressHost string) {
+func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customizationSubmission, petName string, customizationService models.CustomizationService, 
+			string) {
 	if len(petName) == 0 {
 		serveCustomizationErrorMessage(w, r, "name blank",
 			http.StatusBadRequest, petName)
@@ -123,9 +124,9 @@ func serveCustomization(w http.ResponseWriter, r *http.Request, cc chan customiz
 		// If it's a request to DTI, pass them off to the old embedded AMF pet
 		// loader. Otherwise, yield a JSON error.
 		redirectFormat := r.FormValue("redirect")
-		if redirectFormat == "http://"+impressHost+"/wardrobe#{q}" {
+		if redirectFormat == impressHost+"/wardrobe#{q}" {
 			redirectToImpress(w, r, petName, impressHost, "wardrobe")
-		} else if redirectFormat == "http://"+impressHost+"/#{q}" {
+		} else if redirectFormat == impressHost+"/#{q}" {
 			redirectToImpress(w, r, petName, impressHost, "")
 		} else {
 			serveCustomizationErrorMessage(w, r,
@@ -232,7 +233,7 @@ func submit(impress services.ImpressClient, csc chan customizationSubmission) {
 func main() {
 	port := flag.Int("port", 8888, "port on which to run web server")
 	neopetsHost := flag.String("neopetsGateway", "http://www.neopets.com/amfphp/json.php", "Neopets JSON gateway URL")
-	impressHost := flag.String("impress", "impress.openneo.net", "Dress to Impress host")
+	impressHost := flag.String("impress", "https://impress.openneo.net", "Dress to Impress host")
 	pingIntervalInSeconds := flag.Int("pingInterval", 60, "Ping Neopets for status every X seconds")
 	pingTimeoutInSeconds := flag.Int("pingTimeout", 10, "Give up on the Neopets ping after X seconds")
 	pingUrl := flag.String("pingUrl", "http://www.neopets.com/", "Neopets URL to ping")
