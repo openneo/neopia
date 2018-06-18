@@ -13,7 +13,7 @@ type ImpressClient struct {
 }
 
 func NewImpressClient(host string) ImpressClient {
-	return ImpressClient{submitURL: fmt.Sprintf("http://%s/pets/submit.json", host)}
+	return ImpressClient{submitURL: fmt.Sprintf("%s/pets/submit.json", host)}
 }
 
 func (impress ImpressClient) Submit(c models.Customization, userId int) (*http.Response, error) {
