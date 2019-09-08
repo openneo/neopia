@@ -1,19 +1,22 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/openneo/neopia/amfphp"
-	"github.com/openneo/neopia/models"
-	"github.com/openneo/neopia/services"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/openneo/neopia/amfphp"
+	"github.com/openneo/neopia/models"
+	"github.com/openneo/neopia/services"
 )
 
 type customizationSubmission struct {
@@ -206,9 +209,32 @@ func serveStatus(w http.ResponseWriter, r *http.Request, status bool) {
 }
 
 func ping(client http.Client, url string) bool {
-	_, err := client.Get(url)
+	resp, err := client.Get(url)
+
 	status := (err == nil)
-	log.Printf("neopets status: %t", status)
+	if err != nil {
+		log.Print("Neopets.com status: false. Network request failed.")
+		return false
+	}
+
+	defer resp.Body.Close()
+
+	// NOTE(matchu): It was hard to pick a pattern that felt like a reliable
+	//     indicator that it's the real homepage, while still being relatively
+	//     resilient to refactors. But I figure that some concept of "login" or
+	//     "log in" will be pretty stable? (Though if they change their
+	//     language to "sign in", then, well, heck :p)
+	containsLogin, err := regexp.MatchReader("(?i)log ?in", bufio.NewReader(resp.Body))
+	if err != nil {
+		log.Print("Neopets.com status: false. Reading body failed.")
+		return false
+	}
+	if !containsLogin {
+		log.Print("Neopets.com status: false. Body exists, but didn't contain \"login\".")
+		return false
+	}
+
+	log.Print("Neopets.com status: true. All OK!")
 	return status
 }
 
@@ -253,7 +279,7 @@ func main() {
 	status := true
 	go func() {
 		for {
-			_ = <- ticker.C
+			_ = <-ticker.C
 			status = ping(pingClient, *pingUrl)
 		}
 	}()
